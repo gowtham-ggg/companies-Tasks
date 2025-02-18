@@ -1,74 +1,105 @@
 import { useState } from 'react';
+import axios from 'axios';
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 import { useAuth } from '../context/AuthContext';
 
 const Login = () => {
-  const [isLogin, setIsLogin] = useState(true);
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const { login, register } = useAuth();
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const [state, setState] = useState("sign up");
+  const [formData, setFormData] = useState({
+    username: '',
+    email: '',
+    password: ''
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
     try {
-      if (isLogin) {
-        await login(email, password);
+      const endpoint = state === "sign up" ? 'register' : 'login';
+      const { data } = await axios.post(
+        `${import.meta.env.VITE_BACKEND_URL}/api/auth/${endpoint}`,
+        state === "sign up" ? formData : { email: formData.email, password: formData.password }
+      );
+
+      if (data.token) {
+        login(data.token);
+        toast.success(`Welcome ${state === 'sign up' ? formData.username : 'back'}!`);
+        navigate('/feed');
       } else {
-        await register(username, email, password);
+        toast.error(data.message);
       }
-    } catch (err) {
-      setError(isLogin ? 'Invalid credentials' : 'Registration failed');
+      
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'An error occurred');
     }
   };
 
   return (
-    <div className="max-w-md mx-auto mt-10 p-6 bg-white rounded shadow">
-      <h2 className="text-2xl mb-4">{isLogin ? 'Login' : 'Register'}</h2>
-      {error && <p className="text-red-500 mb-2">{error}</p>}
-      <form onSubmit={handleSubmit}>
-      {!isLogin && (
-  <input
-    type="text"
-    placeholder="Username"
-    value={username}
-    onChange={(e) => setUsername(e.target.value)}
-    className="w-full p-2 mb-2 border rounded"
-  />
-)}
+    <form onSubmit={handleSubmit} className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="bg-white p-8 rounded-lg shadow-md w-96">
+        <h2 className="text-2xl font-bold mb-6 text-gray-800">
+          {state === "sign up" ? "Create Account" : "Welcome Back"}
+        </h2>
+        
+        {state === "sign up" && (
+          <div className="mb-4">
+            <label className="block text-gray-700 mb-2">Username</label>
+            <input
+              type="text"
+              value={formData.username}
+              onChange={(e) => setFormData({...formData, username: e.target.value})}
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+          </div>
+        )}
 
+        <div className="mb-4">
+          <label className="block text-gray-700 mb-2">Email</label>
           <input
             type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full p-2 mb-2 border rounded"
+            value={formData.email}
+            onChange={(e) => setFormData({...formData, email: e.target.value})}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
           />
-        
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full p-2 mb-4 border rounded"
-        />
+        </div>
+
+        <div className="mb-6">
+          <label className="block text-gray-700 mb-2">Password</label>
+          <input
+            type="password"
+            value={formData.password}
+            onChange={(e) => setFormData({...formData, password: e.target.value})}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
+          />
+        </div>
+
         <button
           type="submit"
-          className={`w-full p-2 rounded text-white ${isLogin ? 'bg-blue-500 hover:bg-blue-600' : 'bg-green-500 hover:bg-green-600'}`}
+          className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
         >
-          {isLogin ? 'Login' : 'Register'}
+          {state === "sign up" ? "Register" : "Login"}
         </button>
-      </form>
-      <p className="mt-4 text-center">
-        {isLogin ? "Don't have an account? " : "Already have an account? "}
-        <button
-          onClick={() => setIsLogin(!isLogin)}
-          className="text-blue-500 hover:underline"
-        >
-          {isLogin ? 'Register' : 'Login'}
-        </button>
-      </p>
-    </div>
+
+        <p className="mt-4 text-center text-gray-600">
+          {state === "sign up"
+            ? "Already have an account? "
+            : "Need an account? "}
+          <button
+            type="button"
+            onClick={() => setState(state === "sign up" ? "login" : "sign up")}
+            className="text-blue-600 hover:underline focus:outline-none"
+          >
+            {state === "sign up" ? "Login" : "Register"}
+          </button>
+        </p>
+      </div>
+    </form>
   );
 };
 

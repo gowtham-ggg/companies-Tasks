@@ -1,90 +1,112 @@
+// postRoutes.js
 import express from "express";
-import auth from "../middleware/auth.js";
-import Post from "../models/Post.js";
-import cloudinary from "../config/cloudinary.js";
-import multer from "multer";
+import Post from "../models/post.js";
+import upload from "../middleware/multer.js";
+import authMiddleware from "../middleware/authMiddleware.js";
+import { v2 as cloudinary } from "cloudinary";
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
 
-// post Route
-router.post("/", auth, upload.single("image"), async (req, res) => {
+// GET all posts => GET /api/posts
+router.get("/", async (req, res) => {
   try {
-    let imageUrl = "";
-    
-    if (req.file) {
-      const result = await new Promise((resolve, reject) => {
+    const posts = await Post.find().populate("user", "profilePic username");
+    res.json(posts);
+  } catch (error) {
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+
+// CREATE a new post => POST /api/posts
+router.post(
+  "/",
+  authMiddleware, // enable authMiddleware so req.user is available
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      let imageUrl = "";
+
+      // If there's a file, upload to Cloudinary
+      if (req.file) {
         const uploadStream = cloudinary.uploader.upload_stream(
-          { folder: "social_app" },
+          { folder: "social_media_app/posts" },
           (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
+            if (error) {
+              console.log(error);
+              return res.status(500).json({ message: "Error uploading image" });
+            }
+
+            imageUrl = result.secure_url;
+            createAndSendPost();
           }
         );
         uploadStream.end(req.file.buffer);
-      });
-      imageUrl = result.secure_url;
+      } else {
+        createAndSendPost();
+      }
+
+     // postRoutes.js (backend)
+async function createAndSendPost() {
+  const newPost = new Post({
+    content: req.body.content,
+    image: imageUrl,
+    user: req.user.id,
+  });
+
+  await newPost.save();
+  // Populate user data before sending response
+  const populatedPost = await Post.findById(newPost._id).populate('user', 'profilePic username');
+  return res.status(201).json(populatedPost);
+}
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Error creating post" });
     }
-
-    const newPost = new Post({
-      user: req.user.id,
-      content: req.body.content,
-      image: imageUrl
-    });
-
-    const post = await newPost.save();
-    res.json(post);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Server error");
   }
-});
-// Get all posts
-router.get("/", auth, async (req, res) => {
-  try {
-    const posts = await Post.find()
-      .sort({ createdAt: -1 })
-      .populate("user", ["username"]);
-    res.json(posts);
-  } catch (err) {
-    res.status(500).send("Server error");
-  }
-});
+);
 
-// Like a post
-router.put("/like/:id", auth, async (req, res) => {
+
+// LIKE a post => PUT /api/posts/like/:id
+router.put("/like/:id", authMiddleware, async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
     if (!post) return res.status(404).json({ msg: "Post not found" });
 
-    if (post.likes.includes(req.user.id)) {
-      return res.status(400).json({ msg: "Post already liked" });
+    if (post.likes.some((like) => like.toString() === req.user.id)) {
+      post.likes = post.likes.filter((like) => like.toString() !== req.user.id);
+    } else {
+      post.likes.push(req.user.id);
     }
 
-    post.likes.unshift(req.user.id);
     await post.save();
     res.json(post.likes);
   } catch (err) {
-    res.status(500).send("Server error");
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Add comment
-router.post("/comment/:id", auth, async (req, res) => {
+// ADD comment => POST /api/posts/comment/:postId
+router.post("/comment/:postId", authMiddleware, async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id);
+    const postId = req.params.postId;
     const { text } = req.body;
 
-    const newComment = {
-      user: req.user.id,
-      text,
-    };
+    if (!text) {
+      return res.status(400).json({ error: "Comment text is required" });
+    }
 
-    post.comments.unshift(newComment);
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ error: "Post not found" });
+    }
+
+    post.comments.push({ text, user: req.user.id });
     await post.save();
-    res.json(post.comments);
-  } catch (err) {
-    res.status(500).send("Server error");
+    res.json(post);
+  } catch (error) {
+    console.error("Error adding comment:", error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 

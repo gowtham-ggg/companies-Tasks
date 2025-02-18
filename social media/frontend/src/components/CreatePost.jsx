@@ -2,6 +2,7 @@ import { useState } from "react";
 import axios from "axios";
 import { usePosts } from "../context/PostContext";
 import { useAuth } from "../context/AuthContext";
+import { toast } from "react-toastify";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
@@ -9,32 +10,34 @@ const CreatePost = () => {
   const [content, setContent] = useState("");
   const [image, setImage] = useState(null);
   const { addPost } = usePosts();
-  const { user } = useAuth();
+  const { token } = useAuth();  
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!content.trim()) return;
-  
+
+    if (!token) {
+      toast.error("Authentication error. Please log in.");
+      return;
+    }
+
     try {
       const formData = new FormData();
       formData.append("content", content);
-      if (image) {
-        formData.append("image", image);
-      }
-  
-      const token = localStorage.getItem("token");
-      const res = await axios.post(`${BACKEND_URL}/api/posts`, formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
-        },
+      if (image) formData.append("image", image);
+
+      const { data } = await axios.post(`${BACKEND_URL}/api/posts`, formData, 
+        {
+        headers: { Authorization: `Bearer ${token}` },  
       });
-  
-      addPost(res.data);
+
+      addPost(data);
       setContent("");
       setImage(null);
+      toast.success("Post created successfully!");
     } catch (error) {
-      console.error("Error creating post:", error);
+      console.error("Post creation error:", error);
+      toast.error(error.response?.data?.message || "Failed to create post");
     }
   };
 

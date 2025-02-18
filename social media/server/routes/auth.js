@@ -2,7 +2,8 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
-import auth from "../middleware/auth.js";
+import validator from "validator"
+import authMiddleware from "../middleware/authMiddleware.js"
 
 const router = express.Router();
 
@@ -12,28 +13,38 @@ router.post("/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    let user = await User.findOne({ email });
-    if (user) return res.status(400).json({ msg: "User already exists" });
+    if (!username || !email || !password) {
+      return res.json({ success: false, message: "Missing Details" });
+    }
+    //validating email format
+    if (!validator.isEmail(email)) {
+      return res.json({ success: false, message: "Enter a valid email" });
+    }
+    //validating strong password
+    if (password.length < 8) {
+      return res.json({ success: false, message: "Enter a strong Password" });
+    }
 
-    // Hash password
+    //hashing user password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    user = new User({ username, email, password: hashedPassword });
-    await user.save();
+    const userData = {
+      username,
+      email,
+      password: hashedPassword,
+    };
 
-    const payload = { user: { id: user.id } };
-    jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "1h" }, (err, token) => {
-      if (err) throw err;
-      // Return both token and user
-      res.json({
-        token,
-        user: { id: user._id, username: user.username },
-      });
-    });
-  } catch (err) {
-    res.status(500).send("Server error");
+    const newUser = new User(userData);
+    const user = await newUser.save();
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
+    res.json({ success: true, token });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
   }
+
 });
 
 
@@ -42,29 +53,39 @@ router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    let user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: "Invalid credentials" });
+    const user = await User.findOne({ email });
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
+    if (!user) {
+      return res.json({ success: false, message: "User Does not Exist" });
+    }
 
-    const payload = { user: { id: user.id } };
-    jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "2h" }, (err, token) => {
-      if (err) throw err;
-      res.json({ token, user: { id: user.id, username: user.username } });
-    });
-  } catch (err) {
-    res.status(500).send("Server error");
+    console.log("Stored password hash:", user.password);  // Log stored password
+
+    const isMatched = await bcrypt.compare(password, user.password);
+    
+    console.log("Password match:", isMatched);  // Log the result of comparison
+
+    if (isMatched) {
+      const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
+      res.json({ success: true, token });
+    } else {
+      res.json({ success: false, message: "Invalid Credentials" });
+    }
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
   }
-}); 
+});
 
 
-router.get("/me", auth, async (req, res) => {
+
+router.get("/me", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password");
-    res.json(user);
-  } catch (err) {
-    res.status(500).send("Server error");
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+    res.json({ success: true, userData: user });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

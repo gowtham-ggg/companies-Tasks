@@ -7,17 +7,18 @@ const CommentSection = ({ postId, comments }) => {
   const { addComment } = usePosts();
   const { user } = useAuth();
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!newComment.trim()) return;
 
-    addComment(postId, {
-      username: user.username,
-      text: newComment,
-      createdAt: new Date().toISOString()
-    });
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  if (!newComment.trim()) return;
+
+  try {
+    await addComment(postId, newComment);
     setNewComment('');
-  };
+  } catch (error) {
+    toast.error("Failed to add comment");
+  }
+};
 
   return (
     <div className="mt-4">

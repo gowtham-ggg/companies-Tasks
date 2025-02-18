@@ -1,60 +1,52 @@
-import { createContext, useContext, useEffect, useState } from "react";
-import axios from "axios";
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+import { createContext, useContext, useEffect, useState } from 'react';
+import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 
 const AuthContext = createContext();
 
-export function AuthProvider({ children }) {
+export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [token, setToken] = useState(localStorage.getItem('token') || '');
+  const navigate = useNavigate();
+  const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
-  const register = async (formData) => {
-    const res = await axios.post(`${BACKEND_URL}/api/auth/register`, formData);
-    localStorage.setItem("token", res.data.token);
-    setUser(res.data.user);
+  const fetchUser = async (newToken) => {
+    if (!newToken) return;
+  
+    try {
+      const { data } = await axios.get(`${backendUrl}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${newToken}` },
+      });
+      setUser({ ...data.userData, token: newToken });  
+    } catch (error) {
+      console.error('Error fetching user:', error.response?.data?.message);
+      logout();
+    }
   };
+  
 
-  const login = async (formData) => {
-    const res = await axios.post(`${BACKEND_URL}/api/auth/login`, formData);
-    localStorage.setItem("token", res.data.token);
-    setUser(res.data.user);
+  useEffect(() => {
+    fetchUser(token);
+  }, [token]);
+
+  const login = async (newToken) => {
+    localStorage.setItem('token', newToken);
+    setToken(newToken);
+    await fetchUser(newToken);  
   };
 
   const logout = () => {
-    localStorage.removeItem("token");
+    localStorage.removeItem('token');
+    setToken('');
     setUser(null);
+    navigate('/login');
   };
-
-  // checkAuth function
-  const checkAuth = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const res = await axios.get(`${BACKEND_URL}/api/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setUser(res.data);
-    } catch (err) {
-      logout();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    checkAuth();
-  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, register, login, logout }}>
-      {!loading && children}
+    <AuthContext.Provider value={{ user, token, login, logout }}>
+      {children}
     </AuthContext.Provider>
   );
-}
+};
 
 export const useAuth = () => useContext(AuthContext);
